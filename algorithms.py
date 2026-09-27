@@ -1,3 +1,4 @@
+from collections import deque
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -17,8 +18,8 @@ class StepEvent:
     kind: StepKind
     node: int | None
     edge: tuple[int, int] | None
-    frontier: list[int] = field(default_factory=list)   # open (not yet expanded) nodes on the stack
-    expanded: set[int] = field(default_factory=set)     # closed list: nodes already expanded
+    frontier: list[int] = field(default_factory=list)
+    expanded: set[int] = field(default_factory=set)
     path_so_far: list[int] | None = None
 
 
@@ -76,6 +77,43 @@ def dfs(graph: Graph, start: int, target: int, order: str = "insertion") -> Iter
     yield StepEvent(StepKind.DONE, None, None, [], set(expanded), None)
 
 
+def bfs(graph: Graph, start: int, target: int, order: str = "insertion") -> Iterator[StepEvent]:
+    """Breadth-first search.
+
+    - the node added to the open list (queue) first is expanded first;
+    - a node goes to the closed list when it is expanded;
+    - every generated node is checked against the target right away;
+    - a generated node is dropped if it was already expanded or is already waiting in
+      the queue.
+    """
+    queue = deque([start])
+    expanded: set[int] = set()
+    parent: dict[int, int] = {}
+
+    if start == target:
+        yield StepEvent(StepKind.FOUND, start, None, [], set(), [start])
+        return
+
+    while queue:
+        current = queue.popleft()
+        expanded.add(current)
+        yield StepEvent(StepKind.VISIT, current, None, list(queue), set(expanded))
+
+        for neighbor in graph.get_neighbors(current, order):
+            yield StepEvent(StepKind.EXPLORE_EDGE, current, (current, neighbor), list(queue), set(expanded))
+            if neighbor == target:
+                parent[neighbor] = current
+                path = reconstruct_path(parent, start, target)
+                yield StepEvent(StepKind.FOUND, neighbor, (current, neighbor), list(queue), set(expanded), path)
+                return
+            if neighbor not in expanded and neighbor not in parent:
+                parent[neighbor] = current
+                queue.append(neighbor)
+
+    yield StepEvent(StepKind.DONE, None, None, [], set(expanded), None)
+
+
 ALGORITHMS = {
     "DFS": dfs,
+    "BFS": bfs,
 }
